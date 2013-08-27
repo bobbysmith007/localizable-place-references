@@ -32,7 +32,7 @@
     :documentation
     "When we set-place-value associated with this, should we set the local copy
      or should we set the referenced copy "))
-  (:documentation "A funcallable object that represents a reference to another place
+  (:documentation "An object that represents a reference to another place
    localizable: we can stop referencing the distant place and start using a local value
    place: the standard CL place: essentially any form, but mostly ones that can
           be in (setf place value)
