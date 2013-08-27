@@ -24,8 +24,8 @@
    (lambda () (object-traversal-slot-finder o #'parent 'data)) :set-local-copy? nil)
 
 (defparameter +place+ nil)
-(defparameter +indirect0+ (reference-place :place +place+ :set-local-copy? nil))
-(defparameter +indirect1+ (reference-place :place +place+ :set-local-copy? t))
+(defparameter +indirect0+ nil)
+(defparameter +indirect1+ nil)
 
 (defparameter +g-node+ nil)
 (defparameter +e-node+ nil)
@@ -52,6 +52,8 @@
 
 (lisp-unit:define-test test-basic-indirection
   (setf +place+ nil)
+  (setf +indirect0+ (reference-place :place +place+ :set-local-copy? nil))
+  (setf +indirect1+ (reference-place :place +place+ :set-local-copy? t))
   (lisp-unit:assert-false (or (get-place-value +indirect0+)
                     (get-place-value +indirect1+)))
   (set-place-value 42 +indirect0+)
