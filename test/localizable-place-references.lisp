@@ -12,16 +12,21 @@
    (children :accessor children :initarg :children :initform nil)))
 
 (defclass editable-context ()
-    ((editablep :initarg editablep)))
-  (context-slot-accessors
-   o editable-context editablep
-   (lambda () (object-traversal-slot-finder o #'parent 'editablep)))
+  ((editablep :initarg editablep)))
+(context-slot-accessors
+ o editable-context editablep
+ (lambda () (object-traversal-place-finder
+        o #'parent
+        (slot-value-place-reference-finder-test 'editablep))))
 
 (defclass data-context ()
   ((data :initarg :data)))
-  (context-slot-accessors
-   o data-context data
-   (lambda () (object-traversal-slot-finder o #'parent 'data)) :set-local-copy? nil)
+(context-slot-accessors
+ o data-context data
+ (lambda () (object-traversal-place-finder
+        o #'parent
+        (slot-value-place-reference-finder-test 'data)))
+ :set-local-copy? nil)
 
 (defparameter +place+ nil)
 (defparameter +indirect0+ nil)

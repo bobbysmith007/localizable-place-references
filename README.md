@@ -24,3 +24,4 @@ place: the standard CL place: essentially any form, but mostly ones
 reference: the standard definition: an object that can retrieve or set
        a value that would not normally be in scope
 
+Example Usages can be found in the test file

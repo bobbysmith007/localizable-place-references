@@ -124,24 +124,37 @@
    :always-search? always-search?
    :set-local-copy? set-local-copy?))
 
-(defun object-traversal-slot-finder ( o travel-fn slot-name)
+(defun slot-value-place-finder-test ( slot-name )
+  "cant use accessors because of infinite recursion
+   (this is usually called inside of the accessor)"
+  (lambda (o)
+    ;; this should be ignoring slot-unboundedness and missing slots
+    (let ((val (ignore-errors (slot-value o slot-name))))
+      (when val
+        (multiple-value-bind (getter setter)
+            (reference-place-fns (slot-value o slot-name))
+          (typecase val
+            (localizable-place-reference
+             ;; dont latch onto a reference keep going for the original
+             ;; unless this reference has been set
+             (when (slot-boundp val 'local-copy)
+               (values (local-copy val) getter setter)))
+            (t (values val getter setter))))))))
+
+(defun object-traversal-place-finder ( o travel-fn &rest tests)
   "o is an object for which calling travel-fn is valid
    travel-fn turns o into a new o eg: (setf o (funcall #'parent o))
-   slot-name is the name of the slot we are looking at on each object
+   tests is a series of tests to run on the object.  Usually we check the slot
+   value (via a slot-value-place-finder-test)
 
    cant use accessors because of infinite recursion (this is usually called inside of the accessor)"
-  (iter (while o)
-    (for val = (and (slot-boundp o slot-name) (slot-value o slot-name)))
-    (when val
-      (multiple-value-bind (getter setter)
-          (reference-place-fns (slot-value o slot-name))
-        (typecase val
-          (localizable-place-reference
-           ;; dont latch onto a reference keep going for the original
-           ;; unless this reference has been set
-           (when (slot-boundp val 'local-copy)
-             (return (values (local-copy val) getter setter))))
-          (t (return (values val getter setter))))))
+  (iter
+    (while o)
+    (iter (for test in tests)
+      (let ((rtn (multiple-value-list (funcall test o))))
+        (when (or (< 1 (length rtn)) (first rtn))
+          (return-from object-traversal-place-finder
+            (apply #'values rtn)))))
     (setf o (funcall travel-fn o))))
 
 (defmacro context-slot-accessors (instance class-name slot-name &rest place-finder-args)
@@ -154,14 +167,15 @@
               (make-localizable-place-finder ,@place-finder-args)))
       (let ((value (slot-value ,instance ',slot-name)))
         (typecase value
-          (localizable-place-reference (get-place-value value))
+          (localizable-place-reference (nth-value 0 (get-place-value value)))
           (t value))))
 
-    (defmethod (setf ,slot-name) (new (,instance editable-context))
+    (defmethod (setf ,slot-name) (new (,instance ,class-name))
       (unless (slot-boundp ,instance ',slot-name)
         (setf (slot-value ,instance ',slot-name)
               (make-localizable-place-finder ,@place-finder-args)))
       (let ((value (slot-value ,instance ',slot-name)))
         (typecase value
-          (localizable-place-reference (set-place-value new value))
+          (localizable-place-reference
+           (nth-value 0 (set-place-value new value)))
           (t (setf (slot-value ,instance ',slot-name) new)))))))
