@@ -1,6 +1,6 @@
 (in-package :localizable-place-references)
 
-(defclass localizable-place-reference ()
+(defclass place-reference ()
   ((form :accessor form :initarg :form :initform nil
          :documentation "The form that was captured by the place function")
    (place-getter
@@ -10,7 +10,19 @@
    (place-setter
     :accessor place-setter :initarg :place-setter :initform nil
     :documentation
-    "A function that references a place, when called with an arg sets the value of place")
+    "A function that references a place, when called with an arg sets the value of place")))
+
+(defclass object-slot-reference (place-reference)
+  ((instance
+    :accessor instance :initarg :instance :initform nil
+    :documentation "the object that we are referencing")
+   (slot-name
+    :accessor slot-name :initarg :slot-name :initform nil
+    :documentation "the slot-name on the object that we are referencing")))
+
+(defclass localizable-place-reference ()
+  ((place-reference :accessor place-reference :initarg :place-reference :initform nil
+    :documentation "some type of place reference")
    (place-finder
     :accessor place-finder :initarg :place-finder :initform nil
     :documentation
@@ -39,31 +51,44 @@
    reference: the standard definition: an object that can retrieve or set a value that
               would not normally be in scope"))
 
+(defmethod place-getter ((o localizable-place-reference)
+                         &aux (ref (place-reference o)))
+  (when ref (place-getter ref)))
+
+
+(defmethod place-setter ((o localizable-place-reference)
+                         &aux (ref (place-reference o)))
+  (when ref (place-setter ref)))
+
 (defgeneric get-place-value (o)
+  (:method ((o place-reference))
+    (funcall (place-getter o)))
   (:method ((o localizable-place-reference)
             &aux (has-local-copy? (slot-boundp o 'local-copy)))
-    (access:with-access-values
-        (place-getter place-finder always-search?) o
+    (access:with-access
+        (place-getter place-finder place-reference always-search?) o
       (cond
         (has-local-copy? (local-copy o))
-        (place-getter (funcall place-getter))
+        (place-getter (values (funcall place-getter) place-reference))
         (place-finder
-         (multiple-value-bind (value new-place-getter new-place-setter)
+         (multiple-value-bind (value new-place-reference)
              (funcall place-finder)
-           (when (and new-place-getter (not always-search?))
-             (setf (place-getter o) new-place-getter
-                   (place-setter o) new-place-setter))
-           (values value new-place-getter new-place-setter)))
+           (when (and new-place-reference (not always-search?))
+             (setf place-reference new-place-reference))
+           (values value new-place-reference)))
         (T (Error "No local-copy, place or place-finder ~A ~S" o o))))))
 
 (defgeneric set-place-value (new o)
   (:documentation "Given a localizable place reference, and a new value
      set either the local-copy or the place with that value depending on
      current object configuration ")
+  (:method (new (o place-reference))
+    (funcall (place-setter o) new))
   (:method (new (o localizable-place-reference)
             &aux (has-local-copy? (slot-boundp o 'local-copy)))
-    (access:with-access-values
-        (place-setter place-finder set-local-copy? always-search?) o
+    (access:with-access
+        (place-setter place-finder place-reference set-local-copy? always-search?)
+        o
       ;; we set local in a variety of cases, but it was harder to express that logically
       ;; as one expression than setf'ing three times
       (cond
@@ -71,53 +96,50 @@
          (setf (local-copy o) new))
         (place-setter (funcall place-setter new))
         (place-finder
-         (multiple-value-bind (value new-place-getter new-place-setter)
+         (multiple-value-bind (value new-place-ref)
              (funcall place-finder)
-           (when (and new-place-getter (not always-search?))
-             (setf (place-getter o) new-place-getter
-                   (place-setter o) new-place-setter))
+           (when (and new-place-ref (not always-search?))
+             (setf place-reference new-place-ref))
            ;; if we could not find a place to set then we will set ourselves
-           (if new-place-setter
-               (funcall new-place-setter new)
+           (if (and new-place-ref (place-setter new-place-ref))
+               (funcall (place-setter new-place-ref) new)
                (setf (local-copy o) new))
-           (values value new-place-getter new-place-setter)))
+           (values value new-place-ref)))
         (T
          (warn "In the absense of both a place-setter and a place-finder ~A is setting locally.
               ~%This is probably a configuration mistake" o)
          (setf (local-copy o) new))))))
 
-(defmethod localize ((o localizable-place-reference) &optional (value nil value?))
-  "Localizes the place reference to an object to either value, or the value of the place"
-  (setf (local-copy o) (if value? value (funcall o))))
+(defgeneric localize (o &optional value)
+  (:method ((o t) &optional value)
+    "Things that are not place references cant be localized, this is nice because we can
+     treat slot-values as place references even if they are not"
+    (or o value))
+  (:method ((o localizable-place-reference) &optional (value nil value?))
+    "Localizes the place reference to an object to either value, or the value of the place"
+    (setf (local-copy o) (if value? value (funcall o)))))
 
-(defmacro reference-place-fns (place)
+(defmacro reference-place (place)
   "Create a closure that references a place, when called with no args the
    closure returns the value of the place; when called with args, it sets the
    place"
   (when place
-    `(values
-      (lambda () ,place)
-      (lambda (n) (setf ,place n)))))
+    `(make-instance 'place-reference
+      :form ',place
+      :place-getter (lambda () ,place)
+      :place-setter (lambda (n) (setf ,place n)))))
 
-(defmacro reference-place (&key place place-finder
-                           (always-search? nil)
-                           (set-local-copy? t))
-  "A macro that will capture a place and return a localizable-place-reference"
-  (alexandria:with-unique-names (get set)
-    `(multiple-value-bind (,get ,set)
-      ;; we can reference a place whose value is nil
-      ;; we cannot make a reference to the symbol nil
-      ,(when place `(reference-place-fns ,place))
-      (make-instance 'localizable-place-reference
-       :form ',place
-       :place-finder ,place-finder
-       :place-getter ,get
-       :place-setter ,set
-       :always-search? ,always-search?
-       :set-local-copy? ,set-local-copy?)
-      )))
+(defun reference-object-slot (object slot-name)
+  (when (and object slot-name)
+    (make-instance
+     'object-slot-reference
+     :instance object
+     :slot-name slot-name
+     :place-getter (lambda () (slot-value object slot-name))
+     :place-setter (lambda (new) (setf (slot-value object slot-name) new)))))
 
-(defun make-localizable-place-finder (place-finder &key (always-search? t) (set-local-copy? t))
+(defun make-localizable-place-finder
+    (place-finder &key (always-search? t) (set-local-copy? t))
   (make-instance
    'localizable-place-reference
    :place-finder place-finder
@@ -131,15 +153,14 @@
     ;; this should be ignoring slot-unboundedness and missing slots
     (let ((val (ignore-errors (slot-value o slot-name))))
       (when val
-        (multiple-value-bind (getter setter)
-            (reference-place-fns (slot-value o slot-name))
+        (let ((place-ref (reference-object-slot o slot-name)))
           (typecase val
             (localizable-place-reference
              ;; dont latch onto a reference keep going for the original
              ;; unless this reference has been set
              (when (slot-boundp val 'local-copy)
-               (values (local-copy val) getter setter)))
-            (t (values val getter setter))))))))
+               (values (local-copy val) place-ref)))
+            (t (values val place-ref))))))))
 
 (defun object-traversal-place-finder ( o travel-fn &rest tests)
   "o is an object for which calling travel-fn is valid
@@ -157,6 +178,8 @@
             (apply #'values rtn)))))
     (setf o (funcall travel-fn o))))
 
+(defun non-defered-slot-value (o slot-value))
+
 (defmacro context-slot-accessors (instance class-name slot-name &rest place-finder-args)
   `(progn
     (defmethod ,slot-name ((,instance ,class-name))
@@ -167,7 +190,7 @@
               (make-localizable-place-finder ,@place-finder-args)))
       (let ((value (slot-value ,instance ',slot-name)))
         (typecase value
-          (localizable-place-reference (nth-value 0 (get-place-value value)))
+          (localizable-place-reference (get-place-value value))
           (t value))))
 
     (defmethod (setf ,slot-name) (new (,instance ,class-name))
@@ -176,6 +199,5 @@
               (make-localizable-place-finder ,@place-finder-args)))
       (let ((value (slot-value ,instance ',slot-name)))
         (typecase value
-          (localizable-place-reference
-           (nth-value 0 (set-place-value new value)))
+          (localizable-place-reference (set-place-value new value))
           (t (setf (slot-value ,instance ',slot-name) new)))))))

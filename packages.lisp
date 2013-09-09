@@ -3,13 +3,20 @@
   (:use :cl :cl-user :iterate)
   (:export
    #:localizable-place-reference
+   #:localize
+   #:place-reference
+   #:object-slot-reference
+   #:instance
+   #:slot-name
+
    #:get-place-value
    #:set-place-value
    #:always-search?
    #:set-local-copy?
 
    #:reference-place
-   #:reference-place-fns
+   #:reference-object-slot
+
    #:make-localizable-place-finder
    #:context-slot-accessors
    #:slot-value-place-finder-test

@@ -17,7 +17,7 @@
  o editable-context editablep
  (lambda () (object-traversal-place-finder
         o #'parent
-        (slot-value-place-reference-finder-test 'editablep))))
+        (slot-value-place-finder-test 'editablep))))
 
 (defclass data-context ()
   ((data :initarg :data)))
@@ -25,7 +25,7 @@
  o data-context data
  (lambda () (object-traversal-place-finder
         o #'parent
-        (slot-value-place-reference-finder-test 'data)))
+        (slot-value-place-finder-test 'data)))
  :set-local-copy? nil)
 
 (defparameter +place+ nil)
@@ -57,10 +57,16 @@
 
 (lisp-unit:define-test test-basic-indirection
   (setf +place+ nil)
-  (setf +indirect0+ (reference-place :place +place+ :set-local-copy? nil))
-  (setf +indirect1+ (reference-place :place +place+ :set-local-copy? t))
+  (setf +indirect0+ (make-instance
+                     'localizable-place-reference
+                     :place-reference (reference-place +place+)
+                     :set-local-copy? nil))
+  (setf +indirect1+ (make-instance
+                     'localizable-place-reference
+                     :place-reference  (reference-place +place+)
+                     :set-local-copy? t))
   (lisp-unit:assert-false (or (get-place-value +indirect0+)
-                    (get-place-value +indirect1+)))
+                              (get-place-value +indirect1+)))
   (set-place-value 42 +indirect0+)
   (lisp-unit:assert-eql 42 (get-place-value +indirect1+))
   (lisp-unit:assert-eql 42 +place+)
@@ -87,7 +93,7 @@
   (lisp-unit:assert-eql 21 (data +g-node+))
   (lisp-unit:assert-eql 21 (data (first (children +g-node+)))))
 
-(lisp-unit:define-test indirection-tree-editablep 
+(lisp-unit:define-test indirection-tree-editablep
   (setup-indirection-tree)
   (setf (editablep +indirection-tree+) t)
   (lisp-unit:assert-eql t (editablep +indirection-tree+))
