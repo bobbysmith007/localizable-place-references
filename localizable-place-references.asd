@@ -24,9 +24,12 @@
   :components ((:module :test
                         :serial t
                         :components ((:file "localizable-place-references"))))
-  :depends-on (:localizable-place-references :lisp-unit))
+  :depends-on (:localizable-place-references :lisp-unit2))
 
 (defmethod asdf:perform ((o asdf:test-op) (c (eql (find-system :localizable-place-references))))
   (asdf:oos 'asdf:load-op :localizable-place-references-test)
-  (let ((*package* (find-package :localizable-place-references-test)))
-    (eval (read-from-string "(run-tests :all)"))))
+  (let ((*package* (find-package :localizable-place-references)))
+    (eval (read-from-string "(lisp-unit2:run-tests
+             :name :localizable-place-references
+             :run-contexts #'lisp-unit2:with-summary-context
+             :package :localizable-place-references)"))))
