@@ -1,5 +1,7 @@
 (in-package :localizable-place-references)
 
+;; TODO: Release this library
+
 (defclass tree-node-with-data (editable-context data-context)
   ((name :accessor name :initarg :name :initform nil)
    (parent :accessor parent :initarg :parent :initform nil)
