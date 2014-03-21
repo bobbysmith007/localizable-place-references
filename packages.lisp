@@ -20,6 +20,7 @@
    #:make-localizable-place-finder
    #:context-slot-accessors
    #:slot-value-place-finder-test
+   #:place-slot-value
    #:object-traversal-place-finder
 
    #:place-getter

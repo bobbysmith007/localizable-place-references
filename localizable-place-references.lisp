@@ -146,21 +146,26 @@
    :always-search? always-search?
    :set-local-copy? set-local-copy?))
 
+(defun place-slot-value (o slot-name)
+  "If you cant use accessors because of infinite recursion, but you need to get
+   the value or local-copy of a place-ref
+   (this is usually called inside of the accessor)"
+  ;; this should be ignoring slot-unboundedness and missing slots
+  (let ((val (ignore-errors (slot-value o slot-name))))
+    (when val
+      (let ((place-ref (reference-object-slot o slot-name)))
+        (typecase val
+          (localizable-place-reference
+           ;; dont latch onto a reference keep going for the original
+           ;; unless this reference has been set
+           (when (slot-boundp val 'local-copy)
+             (values (local-copy val) place-ref)))
+          (t (values val place-ref)))))))
+
 (defun slot-value-place-finder-test ( slot-name )
   "cant use accessors because of infinite recursion
    (this is usually called inside of the accessor)"
-  (lambda (o)
-    ;; this should be ignoring slot-unboundedness and missing slots
-    (let ((val (ignore-errors (slot-value o slot-name))))
-      (when val
-        (let ((place-ref (reference-object-slot o slot-name)))
-          (typecase val
-            (localizable-place-reference
-             ;; dont latch onto a reference keep going for the original
-             ;; unless this reference has been set
-             (when (slot-boundp val 'local-copy)
-               (values (local-copy val) place-ref)))
-            (t (values val place-ref))))))))
+  (lambda (o) (place-slot-value o slot-name)))
 
 (defun object-traversal-place-finder ( o travel-fn &rest tests)
   "o is an object for which calling travel-fn is valid
@@ -172,10 +177,11 @@
   (iter
     (while o)
     (iter (for test in tests)
-      (let ((rtn (multiple-value-list (funcall test o))))
-        (when (or (< 1 (length rtn)) (first rtn))
-          (return-from object-traversal-place-finder
-            (apply #'values rtn)))))
+      (when test
+        (let ((rtn (multiple-value-list (funcall test o))))
+          (when (or (< 1 (length rtn)) (first rtn))
+            (return-from object-traversal-place-finder
+              (apply #'values rtn))))))
     (setf o (funcall travel-fn o))))
 
 (defun non-defered-slot-value (o slot-value))
